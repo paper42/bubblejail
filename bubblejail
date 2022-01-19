@@ -30,8 +30,8 @@ OPTIONS
   High-level options:
 
 	--network
-		Add network features. Currently equivalent with: --need-dns
-		--need-netns --need-nss
+		Add network features. Currently equivalent with: --need-dns --need-nss
+		--retain-net
 
 	--x11
 		Make X11 work
@@ -49,7 +49,10 @@ OPTIONS
 
 	--need-env-vars      see BUBBLEJAIL_ENV_WHITELIST below
 
-	--need-netns         Retain the network namespace
+	--no-namespaces     Retain all namespaces (don't create new kernel
+	                    namespaces at all)
+	--retain-ipc        Retain the ipc namespace
+	--retain-net        Retain the network namespace
 
 ENVIRONMENT
   $app respects the following environment variables
@@ -82,12 +85,14 @@ _x11=
 
 _need_devfs=
 _need_dns=
-_need_netns=
 _need_nss=
 _need_procfs=
 _need_env_vars=
 _need_path_ro=
 _need_path_rw=
+_ns_none=
+_ns_retain_ipc=
+_ns_retain_net=
 
 _bwrap_feature_args=
 
@@ -119,7 +124,9 @@ while [ "$#" -gt 0 ]; do
 			_need_env_vars="$_need_env_vars $2"
 			shift
 			;;
-		--need-netns) _need_netns=y ;;
+		--retain-net) _ns_retain_net=y ;;
+		--retain-ipc) _ns_retain_ipc=y ;;
+		--no-namespaces) _ns_none=y ;;
 		*)
 			echo_debug "stop option parsing"
 			break
@@ -131,9 +138,9 @@ done
 
 # high-level options
 if [ "$_network" ]; then
-	_need_netns=y
 	_need_dns=y
 	_need_nss=y
+	_ns_retain_net=y
 fi
 if [ "$_x11" ]; then
 	_need_env_vars+=" DISPLAY"
@@ -171,8 +178,26 @@ if [ "$_need_path_rw" ]; then
 fi
 
 # namespaces
-_bwrap_feature_args+=" --unshare-all"
-if [ "$_need_netns" ]; then
+if [ "$_ns_none" ]; then
+	:
+else
+	# if no namespace is explicitly requested for retention, use bwrap's nice
+	# default. netns is an exception, as it has an explicit whitelisting option
+	# (test for any of the relevant vars)
+	if [ -z "$_ns_retain_ipc" ]; then
+		_bwrap_feature_args+=" --unshare-all"
+	else
+		# mimic bwrap's --unshare-all, skipping namespace creation for those
+		# the user wishes to retain
+		_bwrap_feature_args+=" --unshare-user-try"
+		[ "$_ns_retain_ipc" ] || _bwrap_feature_args+=" --unshare-ipc"
+		_bwrap_feature_args+="  -unshare-pid"
+		_bwrap_feature_args+=" --unshare-net"
+		_bwrap_feature_args+=" --unshare-uts"
+		_bwrap_feature_args+=" --unshare-cgroup-try"
+	fi
+fi
+if [ "$_ns_retain_net" ]; then
 	_bwrap_feature_args+=" --share-net"
 fi
 
@@ -201,7 +226,6 @@ exec env -i bwrap \
 	--chdir "$HOME" \
 	--as-pid-1 \
 	--die-with-parent \
-	--unshare-all \
 	--setenv PATH /usr/bin \
 	--setenv HOME "$HOME" \
 	$_bwrap_feature_args \
