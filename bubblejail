@@ -36,6 +36,9 @@ OPTIONS
 	--x11
 		Make X11 work
 
+	--pulseaudio
+		Make pulseaudio work
+
   Low-level options:
 
 	--need-devfs         Mount new devtmpfs
@@ -78,6 +81,7 @@ fi
 
 _debug=
 _network=
+_pulseaudio=
 _x11=
 
 _need_devfs=
@@ -102,6 +106,7 @@ while [ "$#" -gt 0 ]; do
 			;;
 		--debug) _debug=y ;;
 		--network) _network=y ;;
+		--pulseaudio) _pulseaudio=y ;;
 		--x11 | -X) _x11=y ;;
 		--need-devfs) _need_devfs=y ;;
 		--need-dns) _need_dns=y ;;
@@ -129,11 +134,17 @@ while [ "$#" -gt 0 ]; do
 	shift
 done
 
+# helpers
+rundir_user="/run/user/$(id -u)/"
+
 # high-level options
 if [ "$_network" ]; then
 	_need_netns=y
 	_need_dns=y
 	_need_nss=y
+fi
+if [ "$_pulseaudio" ]; then
+	_need_path_rw+=" $rundir_user/pulse/native"
 fi
 if [ "$_x11" ]; then
 	_need_env_vars+=" DISPLAY"

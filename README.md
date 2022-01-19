@@ -48,6 +48,9 @@ OPTIONS
 	--x11
 		Make X11 work
 
+	--pulseaudio
+		Make pulseaudio work
+
   Low-level options:
 
 	--need-devfs         Mount new devtmpfs
