@@ -36,6 +36,9 @@ OPTIONS
 	--x11
 		Make X11 work
 
+	--alsa
+		Make alsa work
+
   Low-level options:
 
 	--need-devfs         Mount new devtmpfs
@@ -77,10 +80,12 @@ fi
 : "${XAUTHORITY:="$HOME/.Xauthority"}"
 
 _debug=
+_alsa=
 _network=
 _x11=
 
 _need_devfs=
+_need_dev_path=
 _need_dns=
 _need_netns=
 _need_nss=
@@ -101,6 +106,7 @@ while [ "$#" -gt 0 ]; do
 			exit 0
 			;;
 		--debug) _debug=y ;;
+		--alsa) _alsa=y ;;
 		--network) _network=y ;;
 		--x11 | -X) _x11=y ;;
 		--need-devfs) _need_devfs=y ;;
@@ -130,6 +136,33 @@ while [ "$#" -gt 0 ]; do
 done
 
 # high-level options
+if [ "$_alsa" ]; then
+	# this is what strace reported, most is covered with /usr's # bind-mount
+	#/usr/etc/alsa/conf.d
+	#/usr/share/alsa/alsa.conf
+	#/usr/share/alsa/cards/aliases.conf
+	#/usr/share/alsa/ctl/default.conf
+	#/usr/share/alsa/pcm/default.conf
+	#/usr/share/alsa/pcm/dmix.conf
+	#/usr/share/alsa/pcm/dsnoop.conf
+	#/var/lib/alsa/conf.d
+	for _p in \
+		/etc/alsa/conf.d \
+		/etc/asound.conf \
+		/usr/etc/asound.conf \
+		"$HOME/.asoundrc" \
+		"$HOME/.config/alsa/asoundrc" \
+		; do
+		[ -r "$_p" ] && _need_path_ro+=" $_p"
+	done
+	_need_dev_path+=" /dev/snd"
+
+	# alsa needs audio group
+	_etc_group="$(mktemp)"
+	chmod 600 "$_etc_group"
+	grep audio /etc/group > "$_etc_group"
+	_bwrap_feature_args+=" --ro-bind $_etc_group /etc/group"
+fi
 if [ "$_network" ]; then
 	_need_netns=y
 	_need_dns=y
@@ -161,12 +194,17 @@ if [ "$_need_nss" ]; then
 fi
 if [ "$_need_path_ro" ]; then
 	for p in $_need_path_ro; do
-		_bwrap_feature_args+=" --ro-bind $p $p"
+		_bwrap_feature_args+=" --ro-bind-try $p $p"
 	done
 fi
 if [ "$_need_path_rw" ]; then
 	for p in $_need_path_rw; do
 		_bwrap_feature_args+=" --bind $p $p"
+	done
+fi
+if [ "$_need_dev_path" ]; then
+	for d in $_need_dev_path; do
+		_bwrap_feature_args+=" --dev-bind $d $d"
 	done
 fi
 
